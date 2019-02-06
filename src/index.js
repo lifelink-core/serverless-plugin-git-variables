@@ -1,5 +1,6 @@
 // TODO: Consider using nodegit instead
 import childProcess from 'child_process'
+import fs from 'fs'
 
 const GIT_PREFIX = 'git'
 
@@ -11,6 +12,34 @@ async function _exec(cmd, options = { timeout: 1000 }) {
       } else {
         resolve(stdout.trim())
       }
+    })
+  })
+}
+
+async function _gitIndexLockClear() {
+  return new Promise(async (resolve) => {
+    const gitDir = await _exec('git rev-parse --git-dir')
+    const gitIndexLock = `${gitDir.replace(/\s*/, '')}/index.lock`
+    fs.access(gitIndexLock, (err) => {
+      if (err) {
+        // No lock found
+        resolve()
+        return
+      }
+
+      const watcher = fs.watch(gitIndexLock)
+      watcher.on('change', (eventType) => {
+        if (eventType === 'rename') {
+          try {
+            fs.accessSync(gitIndexLock)
+          } catch (e) {
+            // File does not exist
+            watcher.close()
+            resolve()
+            return
+          }
+        }
+      })
     })
   })
 }
@@ -66,6 +95,7 @@ export default class ServerlessGitVariables {
         value = await _exec('git log -1 --pretty=%B')
         break
       case 'isDirty':
+        await _gitIndexLockClear()
         const writeTree = await _exec('git write-tree')
         const changes = await _exec(`git diff-index ${writeTree} --`)
         value = `${changes.length > 0}`
