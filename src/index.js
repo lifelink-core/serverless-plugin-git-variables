@@ -72,6 +72,7 @@ export default class ServerlessGitVariables {
         value = await _exec('git log -1 --pretty=%B')
         break
       case 'isDirty':
+        let retries = 60
         while (1) {
           let writeTree
           try {
@@ -79,7 +80,11 @@ export default class ServerlessGitVariables {
           } catch (e) {
             // retry on error
             await _waitSeconds(1)
-            continue
+            if (retries-- > 0) {
+              continue
+            } else {
+              throw e
+            }
           }
           const changes = await _exec(`git diff-index ${writeTree} --`)
           value = `${changes.length > 0}`
